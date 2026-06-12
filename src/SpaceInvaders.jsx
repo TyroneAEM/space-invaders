@@ -511,11 +511,11 @@ export default function SpaceInvaders() {
         ctx.fillStyle = '#00ff88'
         ctx.font = '18px "Courier New"'
         ctx.fillText('← → or A D  to move', W / 2, H / 2 - 20)
-        ctx.fillText('SPACE  to shoot', W / 2, H / 2 + 10)
+        ctx.fillText('SPACE or FIRE button to shoot', W / 2, H / 2 + 10)
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#fff'
           ctx.font = 'bold 22px "Courier New"'
-          ctx.fillText('PRESS SPACE TO START', W / 2, H / 2 + 70)
+          ctx.fillText('PRESS SPACE OR TAP FIRE TO START', W / 2, H / 2 + 70)
         }
         ctx.textAlign = 'left'
       }
@@ -603,17 +603,99 @@ export default function SpaceInvaders() {
     }
   }, [initGame])
 
+  // ── Touch handlers (mobile controls) ──
+  const touchLeft = useCallback((active) => {
+    if (stateRef.current) stateRef.current.keys['ArrowLeft'] = active
+  }, [])
+
+  const touchRight = useCallback((active) => {
+    if (stateRef.current) stateRef.current.keys['ArrowRight'] = active
+  }, [])
+
+  const touchFire = useCallback(() => {
+    const s = stateRef.current
+    if (!s) return
+    if (s.phase === 'start' || s.phase === 'gameover' || s.phase === 'win') {
+      const next = initGame()
+      next.phase = 'playing'
+      stateRef.current = next
+      return
+    }
+    if (s.phase === 'playing' && s.playerBullets.length < 3) {
+      s.playerBullets.push({ x: s.playerX + PLAYER_W / 2 - BULLET_W / 2, y: s.playerY - BULLET_H })
+      audioRef.current?.shoot()
+    }
+  }, [initGame])
+
+  const btnBase = {
+    background: 'rgba(0,255,136,0.1)',
+    border: '2px solid #00ff8888',
+    borderRadius: 12,
+    color: '#00ff88',
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    fontSize: 22,
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'none',
+    userSelect: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 800, padding: '8px 0' }}>
       <canvas
         ref={canvasRef}
         width={W}
         height={H}
-        style={{ border: '2px solid #00ff88', borderRadius: 4, imageRendering: 'pixelated', maxWidth: '100vw' }}
+        style={{
+          width: '100%',
+          height: 'auto',
+          border: '2px solid #00ff88',
+          borderRadius: 4,
+          imageRendering: 'pixelated',
+          touchAction: 'none',
+          display: 'block',
+        }}
         tabIndex={0}
       />
-      <div style={{ color: '#00ff8866', fontSize: 13, fontFamily: 'monospace' }}>
-        ← → / A D — move &nbsp;|&nbsp; SPACE — fire
+
+      {/* Mobile controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 16px', marginTop: 4 }}>
+        {/* Move buttons */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            style={{ ...btnBase, width: 72, height: 72 }}
+            onTouchStart={e => { e.preventDefault(); touchLeft(true) }}
+            onTouchEnd={e => { e.preventDefault(); touchLeft(false) }}
+            onTouchCancel={e => { e.preventDefault(); touchLeft(false) }}
+            onMouseDown={() => touchLeft(true)}
+            onMouseUp={() => touchLeft(false)}
+            onMouseLeave={() => touchLeft(false)}
+          >◀</button>
+          <button
+            style={{ ...btnBase, width: 72, height: 72 }}
+            onTouchStart={e => { e.preventDefault(); touchRight(true) }}
+            onTouchEnd={e => { e.preventDefault(); touchRight(false) }}
+            onTouchCancel={e => { e.preventDefault(); touchRight(false) }}
+            onMouseDown={() => touchRight(true)}
+            onMouseUp={() => touchRight(false)}
+            onMouseLeave={() => touchRight(false)}
+          >▶</button>
+        </div>
+
+        <div style={{ color: '#00ff8844', fontSize: 11, fontFamily: 'monospace', textAlign: 'center' }}>
+          SPACE — fire<br />← → / A D — move
+        </div>
+
+        {/* Fire button */}
+        <button
+          style={{ ...btnBase, width: 100, height: 72, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
+          onTouchStart={e => { e.preventDefault(); touchFire() }}
+          onMouseDown={touchFire}
+        >FIRE</button>
       </div>
     </div>
   )
