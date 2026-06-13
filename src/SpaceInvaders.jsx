@@ -155,7 +155,33 @@ function createAudio() {
     shoot: () => play(440, 'square', 0.08),
     alienShoot: () => play(180, 'sawtooth', 0.12),
     explosion: () => play(80, 'sawtooth', 0.3, 0.2),
-    playerHit: () => { play(120, 'sawtooth', 0.4, 0.3); play(80, 'sawtooth', 0.5, 0.3) },
+    ufoExplosion: () => {
+      // big sci-fi bang: high-pitched burst sweeping down, layered boom
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(900, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.9)
+      gain.gain.setValueAtTime(0.45, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9)
+      osc.start(); osc.stop(ctx.currentTime + 0.9)
+      play(60, 'sawtooth', 0.7, 0.35)
+      play(120, 'square', 0.4, 0.2)
+    },
+    playerHit: () => {
+      // descending sweep — classic ship-destroyed sound
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(480, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.7)
+      gain.gain.setValueAtTime(0.35, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7)
+      osc.start(); osc.stop(ctx.currentTime + 0.7)
+      play(70, 'sawtooth', 0.5, 0.28)
+    },
     startUFO: () => {
       if (ufoNodes) return
       const osc = ctx.createOscillator()
@@ -234,6 +260,9 @@ export default function SpaceInvaders() {
       // shield
       shieldEnergy: 100,
       shieldHit: 0,
+      // explosion particles
+      playerParticles: [],
+      ufoParticles: [],
     }
   }, [])
 
@@ -315,6 +344,14 @@ export default function SpaceInvaders() {
       } else {
         s.shieldEnergy = Math.min(100, s.shieldEnergy + 12 * dt / 1000)
       }
+
+      // Update explosion particles
+      s.playerParticles = s.playerParticles
+        .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.08, life: p.life - dt / 800 }))
+        .filter(p => p.life > 0)
+      s.ufoParticles = s.ufoParticles
+        .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.05, life: p.life - dt / 900 }))
+        .filter(p => p.life > 0)
 
       // Player movement
       const left = s.keys['ArrowLeft'] || s.keys['KeyA']
@@ -410,8 +447,23 @@ export default function SpaceInvaders() {
             s.score += s.ufo.points
             if (s.score > s.hiScore) s.hiScore = s.score
             audioRef.current?.stopUFO()
+            audioRef.current?.ufoExplosion()
+            const ux = s.ufo.x + 24, uy = s.ufo.y + 12
+            const colors = ['#ff3333', '#ff9999', '#ffdd00', '#ffffff', '#ff8800']
+            s.ufoParticles = Array.from({ length: 28 }, () => {
+              const angle = Math.random() * Math.PI * 2
+              const speed = 1.5 + Math.random() * 4
+              return {
+                x: ux + (Math.random() - 0.5) * 48,
+                y: uy + (Math.random() - 0.5) * 20,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 1,
+                size: 2 + Math.random() * 4,
+                color: colors[Math.floor(Math.random() * colors.length)],
+              }
+            })
             s.ufo = null
-            audioRef.current?.explosion()
             return false
           }
         }
@@ -448,6 +500,23 @@ export default function SpaceInvaders() {
             s.lives--
             s.playerInvincible = 2500
             audioRef.current?.playerHit()
+            // spawn explosion particles
+            const px = s.playerX + PLAYER_W / 2
+            const py = s.playerY + PLAYER_H / 2
+            const colors = ['#00ff88', '#ffffff', '#ffdd00', '#ff8800', '#ff4400']
+            s.playerParticles = Array.from({ length: 22 }, () => {
+              const angle = Math.random() * Math.PI * 2
+              const speed = 1.5 + Math.random() * 3.5
+              return {
+                x: px + (Math.random() - 0.5) * PLAYER_W,
+                y: py + (Math.random() - 0.5) * PLAYER_H,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 1,
+                size: 2 + Math.random() * 3,
+                color: colors[Math.floor(Math.random() * colors.length)],
+              }
+            })
             if (s.lives <= 0) {
               s.phase = 'gameover'
             } else {
@@ -476,6 +545,15 @@ export default function SpaceInvaders() {
     }
 
     // ── Draw helpers ──
+    function drawParticles(ctx, particles) {
+      particles.forEach(p => {
+        ctx.globalAlpha = Math.max(0, p.life)
+        ctx.fillStyle = p.color
+        ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size)
+      })
+      ctx.globalAlpha = 1
+    }
+
     function drawPlayer(ctx, s) {
       if (s.phase === 'dead') return
       if (s.playerInvincible > 0 && Math.floor(Date.now() / 120) % 2 === 0) return
@@ -702,8 +780,10 @@ export default function SpaceInvaders() {
       drawShields(ctx, s.shields)
       s.aliens.forEach(a => { if (a.alive) drawAlien(ctx, a, s.animFrame) })
       if (s.ufo) drawUFO(ctx, s.ufo)
+      drawParticles(ctx, s.ufoParticles)
       drawBullets(ctx, s)
       drawPlayer(ctx, s)
+      drawParticles(ctx, s.playerParticles)
       drawPlayerShield(ctx, s, time)
       drawHUD(ctx, s)
       drawOverlay(ctx, s, time)
