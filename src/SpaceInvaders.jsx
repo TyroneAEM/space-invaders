@@ -311,13 +311,18 @@ export default function SpaceInvaders() {
     let marchTick = 0
 
     function update(dt, s) {
-      if (s.phase === 'start' || s.phase === 'gameover' || s.phase === 'win') return
+      if (s.phase === 'start' || s.phase === 'gameover' || s.phase === 'win') {
+        audioRef.current?.stopUFO()
+        return
+      }
       if (s.phase === 'dead') {
+        audioRef.current?.stopUFO()
         s.phaseTimer -= dt
         if (s.phaseTimer <= 0) s.phase = 'playing'
         return
       }
       if (s.phase === 'levelup') {
+        audioRef.current?.stopUFO()
         s.phaseTimer -= dt
         if (s.phaseTimer <= 0) {
           const next = initGame()
