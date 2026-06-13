@@ -5,7 +5,7 @@ const W = 800, H = 600
 const PLAYER_W = 40, PLAYER_H = 24, PLAYER_SPEED = 4
 const BULLET_W = 3, BULLET_H = 12, PLAYER_BULLET_SPEED = 8
 const ALIEN_BULLET_SPEED = 3
-const ALIEN_COLS = 11, ALIEN_ROWS = 5, ALIEN_W = 36, ALIEN_H = 28
+const ALIEN_COLS = 11, ALIEN_ROWS = 6, ALIEN_W = 36, ALIEN_H = 28
 const ALIEN_PAD_X = 16, ALIEN_PAD_Y = 12
 const ALIEN_START_X = 60, ALIEN_START_Y = 60
 const SHIELD_COUNT = 4, SHIELD_W = 64, SHIELD_H = 40
@@ -13,61 +13,87 @@ const SHIELD_Y = H - 110
 const ALIEN_SHOOT_INTERVAL = 1200 // ms base interval
 const ALIEN_MOVE_INTERVAL = 600   // ms base
 
-// Alien shapes: rows 0-1 squids, 2-3 crabs, 4 ufo-like
-const ALIEN_COLORS = ['#ff6ec7', '#ff6ec7', '#7fff6e', '#7fff6e', '#6eb5ff']
+// Alien shapes: rows 0-1 Darth Vader, 2-3 stormtroopers, 4-5 skulls
+const ALIEN_COLORS = ['#8899cc', '#8899cc', '#dde0ee', '#dde0ee', '#6eb5ff', '#6eb5ff']
 const ALIEN_SHAPES = [
-  // row 0-1: top aliens (squid)
+  // row 0-1: Darth Vader helmet
   (ctx, x, y, t) => {
+    // dome
     ctx.beginPath()
-    ctx.moveTo(x + 18, y + 2)
-    ctx.lineTo(x + 22, y + 2)
-    ctx.lineTo(x + 26, y + 8)
-    ctx.lineTo(x + 36, y + 4)
-    ctx.lineTo(x + 32, y + 14)
-    ctx.lineTo(x + 36, y + 20)
-    ctx.lineTo(x + 24, y + 20)
-    ctx.lineTo(x + 22, y + 28)
-    ctx.lineTo(x + 18, y + 28)
-    ctx.lineTo(x + 14, y + 20)
-    ctx.lineTo(x + 0, y + 20)
-    ctx.lineTo(x + 4, y + 14)
-    ctx.lineTo(x + 0, y + 4)
-    ctx.lineTo(x + 10, y + 8)
+    ctx.arc(x + 18, y + 8, 12, Math.PI, 0)
+    ctx.lineTo(x + 30, y + 14)
+    ctx.lineTo(x + 6, y + 14)
     ctx.closePath()
     ctx.fill()
-    // antennae
-    ctx.fillRect(x + 8, y - 4 + (t % 2 === 0 ? 0 : 1), 3, 5)
-    ctx.fillRect(x + 25, y - 4 + (t % 2 === 0 ? 1 : 0), 3, 5)
+    // cheek panels
+    ctx.fillRect(x + 1, y + 8, 7, 16)
+    ctx.fillRect(x + 28, y + 8, 7, 16)
+    // lower mask
+    ctx.fillRect(x + 9, y + 14, 18, 14)
+    // visor — red glow, pulsing
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 400))
+    ctx.fillStyle = `rgba(255, 20, 20, ${pulse})`
+    ctx.fillRect(x + 8, y + 5, 20, 9)
+    // outer bloom
+    ctx.fillStyle = `rgba(255, 0, 0, ${pulse * 0.3})`
+    ctx.fillRect(x + 6, y + 4, 24, 11)
+    // chin grooves
+    ctx.clearRect(x + 13, y + 18, 2, 8)
+    ctx.clearRect(x + 21, y + 18, 2, 8)
+    // animated breathing vents
+    const ventH = t % 2 === 0 ? 3 : 2
+    ctx.clearRect(x + 10, y + 23, 4, ventH)
+    ctx.clearRect(x + 22, y + 23, 4, ventH)
   },
-  // row 2-3: crab
+  // row 2-3: stormtrooper helmet
   (ctx, x, y, t) => {
-    ctx.fillRect(x + 4, y + 4, 28, 16)
-    ctx.fillRect(x + 8, y, 20, 8)
-    ctx.fillRect(x, y + 8, 8, 8)
-    ctx.fillRect(x + 28, y + 8, 8, 8)
-    // claws animate
-    const off = t % 2 === 0 ? 0 : 2
-    ctx.fillRect(x - 2, y + 16 + off, 6, 6)
-    ctx.fillRect(x + 32, y + 16 + off, 6, 6)
-    ctx.clearRect(x + 12, y + 6, 6, 6)
-    ctx.clearRect(x + 18, y + 6, 6, 6)
+    // full helmet body (dome + face plate)
+    ctx.beginPath()
+    ctx.arc(x + 18, y + 9, 13, Math.PI, 0)
+    ctx.lineTo(x + 31, y + 28)
+    ctx.lineTo(x + 5, y + 28)
+    ctx.closePath()
+    ctx.fill()
+    // side ear pods
+    ctx.fillRect(x, y + 12, 5, 9)
+    ctx.fillRect(x + 31, y + 12, 5, 9)
+    // left eye cutout
+    ctx.clearRect(x + 6, y + 6, 10, 10)
+    // right eye cutout
+    ctx.clearRect(x + 20, y + 6, 10, 10)
+    // nose bridge between eyes
+    ctx.fillRect(x + 16, y + 6, 4, 10)
+    // mouth grille (4 vents, animated breathe)
+    const ventY = y + 20 + (t % 2 === 0 ? 0 : 1)
+    ctx.clearRect(x + 10, ventY, 3, 5)
+    ctx.clearRect(x + 14, ventY, 3, 5)
+    ctx.clearRect(x + 19, ventY, 3, 5)
+    ctx.clearRect(x + 23, ventY, 3, 5)
+    // chin notch
+    ctx.clearRect(x + 9, y + 25, 18, 3)
   },
-  // row 4: bottom ufo
+  // rows 4-5: skull
   (ctx, x, y, t) => {
+    // cranium dome
     ctx.beginPath()
-    ctx.ellipse(x + 18, y + 14, 16, 10, 0, 0, Math.PI * 2)
+    ctx.arc(x + 18, y + 11, 13, Math.PI, 0)
+    ctx.lineTo(x + 31, y + 22)
+    ctx.lineTo(x + 5, y + 22)
+    ctx.closePath()
     ctx.fill()
-    ctx.beginPath()
-    ctx.ellipse(x + 18, y + 10, 10, 7, 0, Math.PI, 0)
-    ctx.fill()
-    ctx.clearRect(x + 8, y + 10, 5, 5)
-    ctx.clearRect(x + 15, y + 8, 5, 5)
-    ctx.clearRect(x + 22, y + 10, 5, 5)
-    // legs
-    ctx.fillRect(x + 2, y + 22 + (t % 2 === 0 ? 0 : 1), 4, 5)
-    ctx.fillRect(x + 10, y + 22 + (t % 2 === 0 ? 1 : 0), 4, 5)
-    ctx.fillRect(x + 22, y + 22 + (t % 2 === 0 ? 0 : 1), 4, 5)
-    ctx.fillRect(x + 30, y + 22 + (t % 2 === 0 ? 1 : 0), 4, 5)
+    // jaw
+    ctx.fillRect(x + 8, y + 20, 20, 8)
+    // left eye socket
+    ctx.clearRect(x + 8, y + 5, 8, 9)
+    // right eye socket
+    ctx.clearRect(x + 20, y + 5, 8, 9)
+    // nose cavity
+    ctx.clearRect(x + 15, y + 14, 6, 5)
+    // teeth gaps — jaw chatters with animation
+    const chat = t % 2 === 0 ? 0 : 1
+    ctx.clearRect(x + 10, y + 21 + chat, 3, 5)
+    ctx.clearRect(x + 16, y + 21 + chat, 3, 5)
+    ctx.clearRect(x + 22, y + 21 + chat, 3, 5)
   },
 ]
 
@@ -124,12 +150,37 @@ function createAudio() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration)
     osc.start(); osc.stop(ctx.currentTime + duration)
   }
+  let ufoNodes = null
   return {
     shoot: () => play(440, 'square', 0.08),
     alienShoot: () => play(180, 'sawtooth', 0.12),
     explosion: () => play(80, 'sawtooth', 0.3, 0.2),
     playerHit: () => { play(120, 'sawtooth', 0.4, 0.3); play(80, 'sawtooth', 0.5, 0.3) },
-    ufo: () => play(660, 'sine', 0.15, 0.1),
+    startUFO: () => {
+      if (ufoNodes) return
+      const osc = ctx.createOscillator()
+      const lfo = ctx.createOscillator()
+      const lfoGain = ctx.createGain()
+      const gainNode = ctx.createGain()
+      // sawtooth base at 100Hz, square LFO at 6Hz ±30Hz → alternates 70–130Hz
+      osc.type = 'sawtooth'
+      osc.frequency.value = 100
+      lfo.type = 'square'
+      lfo.frequency.value = 6
+      lfoGain.gain.value = 30
+      lfo.connect(lfoGain)
+      lfoGain.connect(osc.frequency)
+      osc.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      gainNode.gain.setValueAtTime(0.12, ctx.currentTime)
+      lfo.start(); osc.start()
+      ufoNodes = { osc, lfo }
+    },
+    stopUFO: () => {
+      if (!ufoNodes) return
+      try { ufoNodes.osc.stop(); ufoNodes.lfo.stop() } catch (_) {}
+      ufoNodes = null
+    },
     march: (() => {
       const notes = [160, 130, 110, 130]
       let i = 0
@@ -180,6 +231,9 @@ export default function SpaceInvaders() {
       phaseTimer: 0,
       playerInvincible: 0,
       flash: 0,
+      // shield
+      shieldEnergy: 100,
+      shieldHit: 0,
     }
   }, [])
 
@@ -195,7 +249,7 @@ export default function SpaceInvaders() {
     // ── Input ──
     const onKey = (e, down) => {
       stateRef.current.keys[e.code] = down
-      if (down && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD')) {
+      if (down && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'KeyS')) {
         e.preventDefault()
       }
       if (down && e.code === 'Space') {
@@ -205,7 +259,7 @@ export default function SpaceInvaders() {
           stateRef.current.phase = 'playing'
           return
         }
-        if (s.phase === 'playing' && s.playerBullets.length < 3) {
+        if (s.phase === 'playing' && s.playerBullets.length < 3 && !(s.keys['KeyS'] && s.shieldEnergy > 0)) {
           s.playerBullets.push({ x: s.playerX + PLAYER_W / 2 - BULLET_W / 2, y: s.playerY - BULLET_H })
           audioRef.current?.shoot()
         }
@@ -252,6 +306,15 @@ export default function SpaceInvaders() {
 
       s.flash = Math.max(0, s.flash - dt)
       s.playerInvincible = Math.max(0, s.playerInvincible - dt)
+      s.shieldHit = Math.max(0, s.shieldHit - dt)
+
+      // Shield energy drain / recharge
+      const shieldOn = !!s.keys['KeyS'] && s.shieldEnergy > 0
+      if (shieldOn) {
+        s.shieldEnergy = Math.max(0, s.shieldEnergy - 22 * dt / 1000)
+      } else {
+        s.shieldEnergy = Math.min(100, s.shieldEnergy + 12 * dt / 1000)
+      }
 
       // Player movement
       const left = s.keys['ArrowLeft'] || s.keys['KeyA']
@@ -276,11 +339,11 @@ export default function SpaceInvaders() {
       if (s.ufoTimer > 20000 && !s.ufo) {
         s.ufo = { x: -60, y: 30, dir: 1, points: [50, 100, 150, 300][Math.floor(Math.random() * 4)] }
         s.ufoTimer = 0
-        audioRef.current?.ufo()
+        audioRef.current?.startUFO()
       }
       if (s.ufo) {
         s.ufo.x += s.ufo.dir * 2
-        if (s.ufo.x > W + 60) s.ufo = null
+        if (s.ufo.x > W + 60) { audioRef.current?.stopUFO(); s.ufo = null }
       }
 
       // Alien marching
@@ -346,6 +409,7 @@ export default function SpaceInvaders() {
           if (b.x < s.ufo.x + 48 && b.x + BULLET_W > s.ufo.x && b.y < s.ufo.y + 20 && b.y + BULLET_H > s.ufo.y) {
             s.score += s.ufo.points
             if (s.score > s.hiScore) s.hiScore = s.score
+            audioRef.current?.stopUFO()
             s.ufo = null
             audioRef.current?.explosion()
             return false
@@ -364,9 +428,20 @@ export default function SpaceInvaders() {
         return true
       })
 
-      // ── Collision: alien bullets vs player ──
+      // ── Collision: alien bullets vs player / shield ──
       if (s.playerInvincible <= 0) {
         s.alienBullets = s.alienBullets.filter(b => {
+          // Shield dome check (semicircle above player)
+          if (s.keys['KeyS'] && s.shieldEnergy > 0) {
+            const cx = s.playerX + PLAYER_W / 2
+            const cy = s.playerY + 4
+            const dx = (b.x + BULLET_W / 2) - cx
+            const dy = (b.y + BULLET_H / 2) - cy
+            if (dx * dx + dy * dy <= 38 * 38 && b.y < cy + 10) {
+              s.shieldHit = 180
+              return false
+            }
+          }
           const hit = b.x < s.playerX + PLAYER_W && b.x + BULLET_W > s.playerX &&
             b.y < s.playerY + PLAYER_H && b.y + BULLET_H > s.playerY
           if (hit) {
@@ -416,6 +491,40 @@ export default function SpaceInvaders() {
       // engine glow
       ctx.fillStyle = `rgba(0,255,136,${0.4 + 0.3 * Math.sin(Date.now() / 80)})`
       ctx.fillRect(px + 10, py + PLAYER_H, PLAYER_W - 20, 4)
+    }
+
+    function drawPlayerShield(ctx, s, time) {
+      const shieldOn = s.keys['KeyS'] && s.shieldEnergy > 0
+      if (!shieldOn && s.shieldHit <= 0) return
+      const cx = s.playerX + PLAYER_W / 2
+      const cy = s.playerY + 4
+      const r = 38
+      const hitFlash = s.shieldHit > 0
+      const pulse = 0.75 + 0.25 * Math.sin(time / 120)
+      // always fully visible while S is held; fades only on hit-flash decay
+      const alpha = hitFlash ? 0.95 : shieldOn ? pulse : pulse * 0.3
+      const color = hitFlash ? `rgba(255,80,80,${alpha})` : `rgba(0,180,255,${alpha})`
+      const glowColor = hitFlash ? `rgba(255,80,80,${alpha * 0.25})` : `rgba(0,120,255,${alpha * 0.2})`
+      // outer glow ring
+      ctx.beginPath()
+      ctx.arc(cx, cy, r + 4, Math.PI, 0)
+      ctx.strokeStyle = glowColor
+      ctx.lineWidth = 8
+      ctx.stroke()
+      // main dome arc
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, Math.PI, 0)
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2.5
+      ctx.stroke()
+      // fill
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, Math.PI, 0)
+      ctx.lineTo(cx + r, cy)
+      ctx.lineTo(cx - r, cy)
+      ctx.closePath()
+      ctx.fillStyle = hitFlash ? `rgba(255,80,80,0.08)` : `rgba(0,150,255,0.07)`
+      ctx.fill()
     }
 
     function drawAlien(ctx, alien, frame) {
@@ -485,6 +594,19 @@ export default function SpaceInvaders() {
         ctx.fillRect(lx, ly - 4, 10, 6)
         ctx.fillRect(lx + 20, ly - 4, 10, 6)
       }
+      // shield energy bar
+      const barW = 80, barH = 6, barX = W - 110, barY = H - 28
+      ctx.fillStyle = '#003344'
+      ctx.fillRect(barX, barY, barW, barH)
+      const energyColor = s.shieldEnergy > 50 ? '#00ccff' : s.shieldEnergy > 20 ? '#ffaa00' : '#ff4444'
+      ctx.fillStyle = energyColor
+      ctx.fillRect(barX, barY, barW * (s.shieldEnergy / 100), barH)
+      ctx.strokeStyle = '#0088aa'
+      ctx.lineWidth = 1
+      ctx.strokeRect(barX, barY, barW, barH)
+      ctx.fillStyle = '#0099cc'
+      ctx.font = '10px "Courier New"'
+      ctx.fillText('S-SHIELD', barX, barY - 3)
       // ground line
       ctx.fillStyle = '#00ff88'
       ctx.fillRect(0, H - 36, W, 2)
@@ -511,11 +633,13 @@ export default function SpaceInvaders() {
         ctx.fillStyle = '#00ff88'
         ctx.font = '18px "Courier New"'
         ctx.fillText('← → or A D  to move', W / 2, H / 2 - 20)
-        ctx.fillText('SPACE or FIRE button to shoot', W / 2, H / 2 + 10)
+        ctx.fillText('SPACE to shoot', W / 2, H / 2 + 10)
+        ctx.fillStyle = '#00ccff'
+        ctx.fillText('S to activate shield', W / 2, H / 2 + 36)
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#fff'
           ctx.font = 'bold 22px "Courier New"'
-          ctx.fillText('PRESS SPACE OR TAP FIRE TO START', W / 2, H / 2 + 70)
+          ctx.fillText('PRESS SPACE OR TAP FIRE TO START', W / 2, H / 2 + 90)
         }
         ctx.textAlign = 'left'
       }
@@ -580,6 +704,7 @@ export default function SpaceInvaders() {
       if (s.ufo) drawUFO(ctx, s.ufo)
       drawBullets(ctx, s)
       drawPlayer(ctx, s)
+      drawPlayerShield(ctx, s, time)
       drawHUD(ctx, s)
       drawOverlay(ctx, s, time)
     }
@@ -612,6 +737,10 @@ export default function SpaceInvaders() {
     if (stateRef.current) stateRef.current.keys['ArrowRight'] = active
   }, [])
 
+  const touchShield = useCallback((active) => {
+    if (stateRef.current) stateRef.current.keys['KeyS'] = active
+  }, [])
+
   const touchFire = useCallback(() => {
     const s = stateRef.current
     if (!s) return
@@ -621,7 +750,7 @@ export default function SpaceInvaders() {
       stateRef.current = next
       return
     }
-    if (s.phase === 'playing' && s.playerBullets.length < 3) {
+    if (s.phase === 'playing' && s.playerBullets.length < 3 && !(s.keys['KeyS'] && s.shieldEnergy > 0)) {
       s.playerBullets.push({ x: s.playerX + PLAYER_W / 2 - BULLET_W / 2, y: s.playerY - BULLET_H })
       audioRef.current?.shoot()
     }
@@ -686,9 +815,16 @@ export default function SpaceInvaders() {
           >▶</button>
         </div>
 
-        <div style={{ color: '#00ff8844', fontSize: 11, fontFamily: 'monospace', textAlign: 'center' }}>
-          SPACE — fire<br />← → / A D — move
-        </div>
+        {/* Shield button */}
+        <button
+          style={{ ...btnBase, width: 80, height: 72, fontSize: 12, letterSpacing: 1, border: '2px solid #00ccff88', color: '#00ccff', background: 'rgba(0,180,255,0.1)' }}
+          onTouchStart={e => { e.preventDefault(); touchShield(true) }}
+          onTouchEnd={e => { e.preventDefault(); touchShield(false) }}
+          onTouchCancel={e => { e.preventDefault(); touchShield(false) }}
+          onMouseDown={() => touchShield(true)}
+          onMouseUp={() => touchShield(false)}
+          onMouseLeave={() => touchShield(false)}
+        >🛡️<br />SHIELD</button>
 
         {/* Fire button */}
         <button

@@ -6,11 +6,21 @@ A browser-based Space Invaders clone built with React and Vite.
 
 ## Controls
 
+### Desktop (keyboard)
+
 | Key | Action |
 |-----|--------|
 | `←` / `A` | Move left |
 | `→` / `D` | Move right |
 | `Space` | Shoot |
+
+### Mobile (touch)
+
+| Button | Action |
+|--------|--------|
+| ◀ | Move left |
+| ▶ | Move right |
+| FIRE | Shoot / start game |
 
 ## Development
 
