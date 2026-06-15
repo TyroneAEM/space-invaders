@@ -12,6 +12,8 @@ const SHIELD_COUNT = 4, SHIELD_W = 64, SHIELD_H = 40
 const SHIELD_Y = H - 110
 const ALIEN_SHOOT_INTERVAL = 1200 // ms base interval
 const ALIEN_MOVE_INTERVAL = 600   // ms base
+const PICKUP_FALL_SPEED = 1.2
+const WEAPON_SHOTS = 16
 
 // Alien shapes: rows 0-1 Darth Vader, 2-3 stormtroopers, 4-5 skulls
 const ALIEN_COLORS = ['#8899cc', '#8899cc', '#dde0ee', '#dde0ee', '#6eb5ff', '#6eb5ff']
@@ -212,6 +214,43 @@ function createAudio() {
       let i = 0
       return () => { play(notes[i % 4], 'square', 0.1, 0.08); i++ }
     })(),
+    pickupCollect: () => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'square'
+      osc.frequency.setValueAtTime(400, ctx.currentTime)
+      osc.frequency.linearRampToValueAtTime(1000, ctx.currentTime + 0.18)
+      gain.gain.setValueAtTime(0.18, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22)
+      osc.start(); osc.stop(ctx.currentTime + 0.22)
+    },
+    missileFire: () => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(220, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + 0.18)
+      gain.gain.setValueAtTime(0.22, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18)
+      osc.start(); osc.stop(ctx.currentTime + 0.18)
+    },
+    flameFire: () => {
+      play(200, 'sawtooth', 0.1, 0.2)
+      play(280, 'square', 0.07, 0.1)
+    },
+    laserFire: () => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(1400, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.28)
+      gain.gain.setValueAtTime(0.28, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28)
+      osc.start(); osc.stop(ctx.currentTime + 0.28)
+    },
   }
 }
 
@@ -221,6 +260,7 @@ export default function SpaceInvaders() {
   const stateRef = useRef(null)
   const rafRef = useRef(null)
   const audioRef = useRef(null)
+  const fireWeaponRef = useRef(null)
 
   const initGame = useCallback(() => {
     const aliens = buildAliens()
@@ -263,6 +303,11 @@ export default function SpaceInvaders() {
       // explosion particles
       playerParticles: [],
       ufoParticles: [],
+      // weapons
+      weaponPickup: null,
+      weapon: 'normal',
+      weaponShots: 0,
+      lasers: [],
     }
   }, [])
 
@@ -274,6 +319,85 @@ export default function SpaceInvaders() {
 
     stateRef.current = initGame()
     stateRef.current.phase = 'start'
+
+    // ── Weapon helpers ──
+    function killUFO(s) {
+      const ux = s.ufo.x + 24, uy = s.ufo.y + 12
+      s.score += s.ufo.points
+      if (s.score > s.hiScore) s.hiScore = s.score
+      audioRef.current?.stopUFO()
+      audioRef.current?.ufoExplosion()
+      const ucolors = ['#ff3333', '#ff9999', '#ffdd00', '#ffffff', '#ff8800']
+      s.ufoParticles = Array.from({ length: 28 }, () => {
+        const angle = Math.random() * Math.PI * 2
+        const speed = 1.5 + Math.random() * 4
+        return {
+          x: ux + (Math.random() - 0.5) * 48, y: uy + (Math.random() - 0.5) * 20,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          life: 1, size: 2 + Math.random() * 4,
+          color: ucolors[Math.floor(Math.random() * ucolors.length)],
+        }
+      })
+      if (!s.weaponPickup) {
+        const type = Math.random() < 0.25
+          ? 'life'
+          : ['missile', 'fire', 'laser'][Math.floor(Math.random() * 3)]
+        s.weaponPickup = { x: s.ufo.x + 6, y: uy, type }
+      }
+      s.ufo = null
+    }
+
+    function doFire(s) {
+      if (s.keys['KeyS'] && s.shieldEnergy > 0) return
+
+      if (s.weapon === 'laser') {
+        const lx = s.playerX + PLAYER_W / 2
+        s.aliens.forEach(a => {
+          if (!a.alive) return
+          if (lx >= a.x - 2 && lx <= a.x + ALIEN_W + 2) {
+            a.alive = false
+            s.score += a.points
+            if (s.score > s.hiScore) s.hiScore = s.score
+            s.flash = 80
+            audioRef.current?.explosion()
+          }
+        })
+        if (s.ufo && lx >= s.ufo.x && lx <= s.ufo.x + 48) killUFO(s)
+        s.lasers.push({ x: lx, life: 350, maxLife: 350 })
+        audioRef.current?.laserFire()
+        s.weaponShots--
+        if (s.weaponShots <= 0) s.weapon = 'normal'
+
+      } else if (s.weapon === 'missile') {
+        if (s.playerBullets.filter(b => b.type === 'missile').length < 2) {
+          const cx = s.playerX + PLAYER_W / 2
+          s.playerBullets.push({ x: cx - 5, y: s.playerY - 22, vx: 0, vy: -5, type: 'missile', w: 10, h: 22 })
+          audioRef.current?.missileFire()
+          s.weaponShots--
+          if (s.weaponShots <= 0) s.weapon = 'normal'
+        }
+
+      } else if (s.weapon === 'fire') {
+        if (s.playerBullets.length < 9) {
+          const cx = s.playerX + PLAYER_W / 2
+          s.playerBullets.push(
+            { x: cx - 10, y: s.playerY - 8,  vx: -1.5, vy: -7, type: 'fire', w: 5, h: 11 },
+            { x: cx - 2,  y: s.playerY - 10, vx: 0,    vy: -7, type: 'fire', w: 5, h: 11 },
+            { x: cx + 5,  y: s.playerY - 8,  vx: 1.5,  vy: -7, type: 'fire', w: 5, h: 11 },
+          )
+          audioRef.current?.flameFire()
+          s.weaponShots--
+          if (s.weaponShots <= 0) s.weapon = 'normal'
+        }
+
+      } else {
+        if (s.playerBullets.length < 3) {
+          s.playerBullets.push({ x: s.playerX + PLAYER_W / 2 - BULLET_W / 2, y: s.playerY - BULLET_H, vx: 0, vy: -PLAYER_BULLET_SPEED, type: 'normal', w: BULLET_W, h: BULLET_H })
+          audioRef.current?.shoot()
+        }
+      }
+    }
+    fireWeaponRef.current = doFire
 
     // ── Input ──
     const onKey = (e, down) => {
@@ -288,10 +412,7 @@ export default function SpaceInvaders() {
           stateRef.current.phase = 'playing'
           return
         }
-        if (s.phase === 'playing' && s.playerBullets.length < 3 && !(s.keys['KeyS'] && s.shieldEnergy > 0)) {
-          s.playerBullets.push({ x: s.playerX + PLAYER_W / 2 - BULLET_W / 2, y: s.playerY - BULLET_H })
-          audioRef.current?.shoot()
-        }
+        if (s.phase === 'playing') doFire(s)
       }
     }
     const onKeyDown = e => onKey(e, true)
@@ -330,6 +451,8 @@ export default function SpaceInvaders() {
           next.hiScore = s.hiScore
           next.lives = s.lives
           next.level = s.level + 1
+          next.weapon = s.weapon
+          next.weaponShots = s.weaponShots
           next.phase = 'playing'
           // speed up aliens
           next.marchInterval = Math.max(80, 600 - (s.level) * 60)
@@ -366,8 +489,9 @@ export default function SpaceInvaders() {
 
       // Move player bullets
       s.playerBullets = s.playerBullets.filter(b => {
-        b.y -= PLAYER_BULLET_SPEED
-        return b.y + BULLET_H > 0
+        b.x += b.vx || 0
+        b.y += b.vy !== undefined ? b.vy : -PLAYER_BULLET_SPEED
+        return b.y + (b.h || BULLET_H) > 0 && b.x > -20 && b.x < W + 20
       })
 
       // Move alien bullets
@@ -435,48 +559,30 @@ export default function SpaceInvaders() {
 
       // ── Collision: player bullets vs aliens ──
       s.playerBullets = s.playerBullets.filter(b => {
+        const bw = b.w || BULLET_W, bh = b.h || BULLET_H
         for (const a of s.aliens) {
           if (!a.alive) continue
-          if (b.x < a.x + ALIEN_W && b.x + BULLET_W > a.x && b.y < a.y + ALIEN_H && b.y + BULLET_H > a.y) {
+          if (b.x < a.x + ALIEN_W && b.x + bw > a.x && b.y < a.y + ALIEN_H && b.y + bh > a.y) {
             a.alive = false
             s.score += a.points
             if (s.score > s.hiScore) s.hiScore = s.score
             s.flash = 80
             audioRef.current?.explosion()
-            return false // remove bullet
+            return false
           }
         }
         // vs UFO
         if (s.ufo) {
-          if (b.x < s.ufo.x + 48 && b.x + BULLET_W > s.ufo.x && b.y < s.ufo.y + 20 && b.y + BULLET_H > s.ufo.y) {
-            s.score += s.ufo.points
-            if (s.score > s.hiScore) s.hiScore = s.score
-            audioRef.current?.stopUFO()
-            audioRef.current?.ufoExplosion()
-            const ux = s.ufo.x + 24, uy = s.ufo.y + 12
-            const colors = ['#ff3333', '#ff9999', '#ffdd00', '#ffffff', '#ff8800']
-            s.ufoParticles = Array.from({ length: 28 }, () => {
-              const angle = Math.random() * Math.PI * 2
-              const speed = 1.5 + Math.random() * 4
-              return {
-                x: ux + (Math.random() - 0.5) * 48,
-                y: uy + (Math.random() - 0.5) * 20,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                life: 1,
-                size: 2 + Math.random() * 4,
-                color: colors[Math.floor(Math.random() * colors.length)],
-              }
-            })
-            s.ufo = null
+          if (b.x < s.ufo.x + 48 && b.x + bw > s.ufo.x && b.y < s.ufo.y + 20 && b.y + bh > s.ufo.y) {
+            killUFO(s)
             return false
           }
         }
         // vs shields
         for (const shield of s.shields) {
           for (const block of shield.blocks) {
-            const bx = shield.x + block.c * 8, by = shield.y + block.r * 8
-            if (b.x < bx + 8 && b.x + BULLET_W > bx && b.y < by + 8 && b.y + BULLET_H > by && block.hp > 0) {
+            const sx = shield.x + block.c * 8, sy = shield.y + block.r * 8
+            if (b.x < sx + 8 && b.x + bw > sx && b.y < sy + 8 && b.y + bh > sy && block.hp > 0) {
               block.hp--
               return false
             }
@@ -547,6 +653,28 @@ export default function SpaceInvaders() {
         }
         return true
       })
+
+      // ── Weapon pickup fall + catch ──
+      if (s.weaponPickup) {
+        s.weaponPickup.y += PICKUP_FALL_SPEED
+        const p = s.weaponPickup
+        if (p.x < s.playerX + PLAYER_W && p.x + 44 > s.playerX &&
+            p.y + 28 > s.playerY && p.y < s.playerY + PLAYER_H) {
+          if (p.type === 'life') {
+            s.lives = Math.min(s.lives + 1, 5)
+          } else {
+            s.weapon = p.type
+            s.weaponShots = WEAPON_SHOTS
+          }
+          s.weaponPickup = null
+          audioRef.current?.pickupCollect()
+        } else if (s.weaponPickup && s.weaponPickup.y > H + 30) {
+          s.weaponPickup = null
+        }
+      }
+
+      // Age lasers
+      s.lasers = s.lasers.map(l => ({ ...l, life: l.life - dt })).filter(l => l.life > 0)
     }
 
     // ── Draw helpers ──
@@ -652,22 +780,95 @@ export default function SpaceInvaders() {
     }
 
     function drawBullets(ctx, s) {
-      ctx.fillStyle = '#fff'
-      s.playerBullets.forEach(b => ctx.fillRect(b.x, b.y, BULLET_W, BULLET_H))
+      s.playerBullets.forEach(b => {
+        if (b.type === 'missile') {
+          // nose
+          ctx.fillStyle = '#ffffff'
+          ctx.beginPath()
+          ctx.moveTo(b.x + 5, b.y)
+          ctx.lineTo(b.x, b.y + 7)
+          ctx.lineTo(b.x + 10, b.y + 7)
+          ctx.closePath()
+          ctx.fill()
+          // body
+          ctx.fillStyle = '#ffdd00'
+          ctx.fillRect(b.x + 2, b.y + 7, 6, 11)
+          // fins
+          ctx.fillStyle = '#ff8800'
+          ctx.fillRect(b.x, b.y + 14, 3, 6)
+          ctx.fillRect(b.x + 7, b.y + 14, 3, 6)
+          // exhaust
+          ctx.fillStyle = `rgba(255,140,0,${0.5 + 0.5 * Math.sin(Date.now() / 40)})`
+          ctx.fillRect(b.x + 2, b.y + 20, 6, 4)
+        } else if (b.type === 'fire') {
+          const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 60 + b.x)
+          ctx.fillStyle = `rgba(255,120,0,${pulse})`
+          ctx.fillRect(b.x, b.y, b.w, b.h)
+          ctx.fillStyle = `rgba(255,230,0,${pulse * 0.8})`
+          ctx.fillRect(b.x + 1, b.y + 2, b.w - 2, b.h - 4)
+        } else {
+          ctx.fillStyle = '#fff'
+          ctx.fillRect(b.x, b.y, b.w || BULLET_W, b.h || BULLET_H)
+        }
+      })
       ctx.fillStyle = '#ff4444'
       s.alienBullets.forEach(b => {
         ctx.fillRect(b.x, b.y, BULLET_W, 8)
-        // zigzag effect
         ctx.fillRect(b.x + 2, b.y + 4, BULLET_W, 4)
+      })
+    }
+
+    function drawPickup(ctx, pickup, time) {
+      if (!pickup) return
+      const { x, y, type } = pickup
+      const COLORS = { missile: '#ffdd00', fire: '#ff6600', laser: '#00ffff', life: '#00ff88' }
+      const LABELS = { missile: 'MISSILE', fire: 'FIRE', laser: 'LASER', life: '1UP' }
+      const color = COLORS[type]
+      const pulse = 0.6 + 0.4 * Math.sin(time / 180)
+      ctx.fillStyle = 'rgba(0,0,0,0.8)'
+      ctx.fillRect(x, y, 44, 28)
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2
+      ctx.strokeRect(x, y, 44, 28)
+      ctx.globalAlpha = pulse * 0.5
+      ctx.strokeStyle = color
+      ctx.lineWidth = 6
+      ctx.strokeRect(x - 3, y - 3, 50, 34)
+      ctx.globalAlpha = 1
+      ctx.fillStyle = color
+      ctx.font = 'bold 10px "Courier New"'
+      ctx.textAlign = 'center'
+      ctx.fillText(LABELS[type], x + 22, y + 18)
+      ctx.textAlign = 'left'
+      // drop arrow
+      ctx.globalAlpha = pulse
+      ctx.fillStyle = color
+      ctx.fillRect(x + 20, y + 31, 3, 6)
+      ctx.fillRect(x + 18, y + 36, 7, 2)
+      ctx.globalAlpha = 1
+    }
+
+    function drawLasers(ctx, lasers) {
+      const beamH = H - 36  // stop at the ground line
+      lasers.forEach(l => {
+        const a = l.life / l.maxLife
+        ctx.fillStyle = `rgba(0,160,255,${a * 0.12})`
+        ctx.fillRect(l.x - 14, 0, 28, beamH)
+        ctx.fillStyle = `rgba(80,200,255,${a * 0.5})`
+        ctx.fillRect(l.x - 4, 0, 8, beamH)
+        ctx.fillStyle = `rgba(200,240,255,${a * 0.85})`
+        ctx.fillRect(l.x - 1, 0, 3, beamH)
+        ctx.fillStyle = `rgba(255,255,255,${a})`
+        ctx.fillRect(l.x, 0, 1, beamH)
       })
     }
 
     function drawHUD(ctx, s) {
       ctx.fillStyle = '#00ff88'
-      ctx.font = 'bold 16px "Courier New"'
-      ctx.fillText(`SCORE: ${s.score}`, 20, 28)
-      ctx.fillText(`HI: ${s.hiScore}`, W / 2 - 50, 28)
-      ctx.fillText(`LEVEL: ${s.level}`, W - 120, 28)
+      ctx.font = 'bold 22px "Courier New"'
+      ctx.fillText(`SCORE: ${s.score}`, 20, 32)
+      ctx.fillText(`HI: ${s.hiScore}`, W / 2 - 60, 32)
+      ctx.fillText(`LEVEL: ${s.level}`, W - 150, 32)
       // lives
       for (let i = 0; i < s.lives; i++) {
         const lx = 20 + i * 34, ly = H - 20
@@ -690,6 +891,15 @@ export default function SpaceInvaders() {
       ctx.fillStyle = '#0099cc'
       ctx.font = '10px "Courier New"'
       ctx.fillText('S-SHIELD', barX, barY - 3)
+      // active weapon indicator
+      if (s.weapon !== 'normal') {
+        const WCOLORS = { missile: '#ffdd00', fire: '#ff6600', laser: '#00ffff' }
+        const wc = WCOLORS[s.weapon]
+        ctx.fillStyle = wc
+        ctx.fillRect(148, H - 26, 6, 6)
+        ctx.font = 'bold 12px "Courier New"'
+        ctx.fillText(`${s.weapon.toUpperCase()} x${s.weaponShots}`, 158, H - 19)
+      }
       // ground line
       ctx.fillStyle = '#00ff88'
       ctx.fillRect(0, H - 36, W, 2)
@@ -719,10 +929,12 @@ export default function SpaceInvaders() {
         ctx.fillText('SPACE to shoot', W / 2, H / 2 + 10)
         ctx.fillStyle = '#00ccff'
         ctx.fillText('S to activate shield', W / 2, H / 2 + 36)
+        ctx.fillStyle = '#ffdd00'
+        ctx.fillText('Shoot the UFO to drop a weapon!', W / 2, H / 2 + 62)
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#fff'
           ctx.font = 'bold 22px "Courier New"'
-          ctx.fillText('PRESS SPACE OR TAP FIRE TO START', W / 2, H / 2 + 90)
+          ctx.fillText('PRESS SPACE OR TAP FIRE TO START', W / 2, H / 2 + 105)
         }
         ctx.textAlign = 'left'
       }
@@ -786,6 +998,8 @@ export default function SpaceInvaders() {
       s.aliens.forEach(a => { if (a.alive) drawAlien(ctx, a, s.animFrame) })
       if (s.ufo) drawUFO(ctx, s.ufo)
       drawParticles(ctx, s.ufoParticles)
+      drawPickup(ctx, s.weaponPickup, time)
+      drawLasers(ctx, s.lasers)
       drawBullets(ctx, s)
       drawPlayer(ctx, s)
       drawParticles(ctx, s.playerParticles)
@@ -835,10 +1049,7 @@ export default function SpaceInvaders() {
       stateRef.current = next
       return
     }
-    if (s.phase === 'playing' && s.playerBullets.length < 3 && !(s.keys['KeyS'] && s.shieldEnergy > 0)) {
-      s.playerBullets.push({ x: s.playerX + PLAYER_W / 2 - BULLET_W / 2, y: s.playerY - BULLET_H })
-      audioRef.current?.shoot()
-    }
+    if (s.phase === 'playing') fireWeaponRef.current?.(s)
   }, [initGame])
 
   const btnBase = {
