@@ -99,6 +99,17 @@ const ALIEN_SHAPES = [
   },
 ]
 
+function getHiScore() {
+  const match = document.cookie.match(/(?:^|;\s*)hiScore=(\d+)/)
+  return match ? parseInt(match[1], 10) : 0
+}
+
+function saveHiScore(score) {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() + 10)
+  document.cookie = `hiScore=${score};expires=${d.toUTCString()};path=/;SameSite=Lax`
+}
+
 function getAlienShapeIdx(row) {
   if (row <= 1) return 0
   if (row <= 3) return 1
@@ -271,7 +282,7 @@ export default function SpaceInvaders() {
       playerY: H - 56,
       lives: 3,
       score: 0,
-      hiScore: stateRef.current?.hiScore || 0,
+      hiScore: Math.max(stateRef.current?.hiScore || 0, getHiScore()),
       level: 1,
       // input
       keys: {},
@@ -324,7 +335,7 @@ export default function SpaceInvaders() {
     function killUFO(s) {
       const ux = s.ufo.x + 24, uy = s.ufo.y + 12
       s.score += s.ufo.points
-      if (s.score > s.hiScore) s.hiScore = s.score
+      if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
       audioRef.current?.stopUFO()
       audioRef.current?.ufoExplosion()
       const ucolors = ['#ff3333', '#ff9999', '#ffdd00', '#ffffff', '#ff8800']
@@ -357,7 +368,7 @@ export default function SpaceInvaders() {
           if (lx >= a.x - 2 && lx <= a.x + ALIEN_W + 2) {
             a.alive = false
             s.score += a.points
-            if (s.score > s.hiScore) s.hiScore = s.score
+            if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
             s.flash = 80
             audioRef.current?.explosion()
           }
@@ -565,7 +576,7 @@ export default function SpaceInvaders() {
           if (b.x < a.x + ALIEN_W && b.x + bw > a.x && b.y < a.y + ALIEN_H && b.y + bh > a.y) {
             a.alive = false
             s.score += a.points
-            if (s.score > s.hiScore) s.hiScore = s.score
+            if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
             s.flash = 80
             audioRef.current?.explosion()
             return false
