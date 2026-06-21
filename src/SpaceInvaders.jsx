@@ -382,7 +382,7 @@ export default function SpaceInvaders() {
       } else if (s.weapon === 'missile') {
         if (s.playerBullets.filter(b => b.type === 'missile').length < 2) {
           const cx = s.playerX + PLAYER_W / 2
-          s.playerBullets.push({ x: cx - 5, y: s.playerY - 22, vx: 0, vy: -5, type: 'missile', w: 10, h: 22 })
+          s.playerBullets.push({ x: cx - 5, y: s.playerY - 22, vx: 0, vy: -5, type: 'missile', w: 10, h: 22, piercing: 1 })
           audioRef.current?.missileFire()
           s.weaponShots--
           if (s.weaponShots <= 0) s.weapon = 'normal'
@@ -579,6 +579,7 @@ export default function SpaceInvaders() {
             if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
             s.flash = 80
             audioRef.current?.explosion()
+            if (b.piercing > 0) { b.piercing--; continue }
             return false
           }
         }
