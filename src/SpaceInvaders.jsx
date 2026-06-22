@@ -319,10 +319,9 @@ export default function SpaceInvaders() {
       weapon: 'normal',
       weaponShots: 0,
       lasers: [],
-      // combo & pause
+      // combo
       combo: 0,
       comboTimer: 0,
-      paused: false,
     }
   }, [])
 
@@ -423,11 +422,6 @@ export default function SpaceInvaders() {
       if (down && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'KeyS')) {
         e.preventDefault()
       }
-      if (down && e.code === 'KeyP') {
-        e.preventDefault()
-        const s = stateRef.current
-        if (s.phase === 'playing') s.paused = !s.paused
-      }
       if (down && e.code === 'Space') {
         const s = stateRef.current
         if (s.phase === 'start' || s.phase === 'gameover' || s.phase === 'win') {
@@ -435,7 +429,7 @@ export default function SpaceInvaders() {
           stateRef.current.phase = 'playing'
           return
         }
-        if (s.phase === 'playing' && !s.paused) doFire(s)
+        if (s.phase === 'playing') doFire(s)
       }
     }
     const onKeyDown = e => onKey(e, true)
@@ -457,9 +451,6 @@ export default function SpaceInvaders() {
     function update(dt, s) {
       if (s.phase === 'start' || s.phase === 'gameover' || s.phase === 'win') {
         audioRef.current?.stopUFO()
-        return
-      }
-      if (s.paused) {
         return
       }
       if (s.phase === 'dead') {
@@ -1004,7 +995,7 @@ export default function SpaceInvaders() {
         ctx.fillStyle = '#00ff88'
         ctx.font = '18px "Courier New"'
         ctx.fillText('← → or A D  to move', W / 2, H / 2 - 20)
-        ctx.fillText('SPACE to shoot  |  P to pause', W / 2, H / 2 + 10)
+        ctx.fillText('SPACE to shoot', W / 2, H / 2 + 10)
         ctx.fillStyle = '#00ccff'
         ctx.fillText('S to activate shield', W / 2, H / 2 + 36)
         ctx.fillStyle = '#ffdd00'
@@ -1054,20 +1045,6 @@ export default function SpaceInvaders() {
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#00ff88'
           ctx.fillText('PRESS SPACE TO PLAY AGAIN', W / 2, H / 2 + 60)
-        }
-        ctx.textAlign = 'left'
-      }
-      if (s.paused) {
-        ctx.fillStyle = 'rgba(0,0,0,0.5)'
-        ctx.fillRect(0, 0, W, H)
-        ctx.textAlign = 'center'
-        ctx.fillStyle = '#00ccff'
-        ctx.font = 'bold 48px "Courier New"'
-        ctx.fillText('PAUSED', W / 2, H / 2 - 20)
-        ctx.fillStyle = '#fff'
-        ctx.font = '18px "Courier New"'
-        if (Math.floor(time / 600) % 2 === 0) {
-          ctx.fillText('PRESS P TO RESUME', W / 2, H / 2 + 40)
         }
         ctx.textAlign = 'left'
       }
@@ -1144,12 +1121,6 @@ export default function SpaceInvaders() {
     if (s.phase === 'playing') fireWeaponRef.current?.(s)
   }, [initGame])
 
-  const touchPause = useCallback(() => {
-    const s = stateRef.current
-    if (s && s.phase === 'playing') {
-      s.paused = !s.paused
-    }
-  }, [])
 
   const btnBase = {
     background: 'rgba(0,255,136,0.1)',
@@ -1169,7 +1140,7 @@ export default function SpaceInvaders() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 800, padding: '8px 0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 800, minWidth: 0, padding: '8px 0' }}>
       <canvas
         ref={canvasRef}
         width={W}
@@ -1187,11 +1158,11 @@ export default function SpaceInvaders() {
       />
 
       {/* Mobile controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 16px', marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 8px', marginTop: 4 }}>
         {/* Move buttons */}
         <div style={{ display: 'flex', gap: 12 }}>
           <button
-            style={{ ...btnBase, width: 72, height: 72 }}
+            style={{ ...btnBase, width: 64, height: 64 }}
             onTouchStart={e => { e.preventDefault(); touchLeft(true) }}
             onTouchEnd={e => { e.preventDefault(); touchLeft(false) }}
             onTouchCancel={e => { e.preventDefault(); touchLeft(false) }}
@@ -1200,7 +1171,7 @@ export default function SpaceInvaders() {
             onMouseLeave={() => touchLeft(false)}
           >◀</button>
           <button
-            style={{ ...btnBase, width: 72, height: 72 }}
+            style={{ ...btnBase, width: 64, height: 64 }}
             onTouchStart={e => { e.preventDefault(); touchRight(true) }}
             onTouchEnd={e => { e.preventDefault(); touchRight(false) }}
             onTouchCancel={e => { e.preventDefault(); touchRight(false) }}
@@ -1212,7 +1183,7 @@ export default function SpaceInvaders() {
 
         {/* Shield button */}
         <button
-          style={{ ...btnBase, width: 80, height: 72, fontSize: 12, letterSpacing: 1, border: '2px solid #00ccff88', color: '#00ccff', background: 'rgba(0,180,255,0.1)' }}
+          style={{ ...btnBase, width: 72, height: 64, fontSize: 11, letterSpacing: 1, border: '2px solid #00ccff88', color: '#00ccff', background: 'rgba(0,180,255,0.1)' }}
           onTouchStart={e => { e.preventDefault(); touchShield(true) }}
           onTouchEnd={e => { e.preventDefault(); touchShield(false) }}
           onTouchCancel={e => { e.preventDefault(); touchShield(false) }}
@@ -1221,16 +1192,9 @@ export default function SpaceInvaders() {
           onMouseLeave={() => touchShield(false)}
         >🛡️<br />SHIELD</button>
 
-        {/* Pause button */}
-        <button
-          style={{ ...btnBase, width: 72, height: 72, fontSize: 10, letterSpacing: 0.5, border: '2px solid #ffaa0088', color: '#ffaa00', background: 'rgba(255,170,0,0.1)' }}
-          onTouchStart={e => { e.preventDefault(); touchPause() }}
-          onMouseDown={touchPause}
-        >⏸<br />PAUSE</button>
-
         {/* Fire button */}
         <button
-          style={{ ...btnBase, width: 100, height: 72, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
+          style={{ ...btnBase, width: 80, height: 64, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
           onTouchStart={e => { e.preventDefault(); touchFire() }}
           onMouseDown={touchFire}
         >FIRE</button>
