@@ -319,6 +319,10 @@ export default function SpaceInvaders() {
       weapon: 'normal',
       weaponShots: 0,
       lasers: [],
+      // combo & pause
+      combo: 0,
+      comboTimer: 0,
+      paused: false,
     }
   }, [])
 
@@ -367,7 +371,10 @@ export default function SpaceInvaders() {
           if (!a.alive) return
           if (lx >= a.x - 2 && lx <= a.x + ALIEN_W + 2) {
             a.alive = false
-            s.score += a.points
+            const comboMultiplier = 1 + Math.floor(s.combo / 5) * 0.1
+            s.score += Math.floor(a.points * comboMultiplier)
+            s.combo++
+            s.comboTimer = 2500
             if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
             s.flash = 80
             audioRef.current?.explosion()
@@ -416,6 +423,11 @@ export default function SpaceInvaders() {
       if (down && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'KeyS')) {
         e.preventDefault()
       }
+      if (down && e.code === 'KeyP') {
+        e.preventDefault()
+        const s = stateRef.current
+        if (s.phase === 'playing') s.paused = !s.paused
+      }
       if (down && e.code === 'Space') {
         const s = stateRef.current
         if (s.phase === 'start' || s.phase === 'gameover' || s.phase === 'win') {
@@ -423,7 +435,7 @@ export default function SpaceInvaders() {
           stateRef.current.phase = 'playing'
           return
         }
-        if (s.phase === 'playing') doFire(s)
+        if (s.phase === 'playing' && !s.paused) doFire(s)
       }
     }
     const onKeyDown = e => onKey(e, true)
@@ -447,6 +459,9 @@ export default function SpaceInvaders() {
         audioRef.current?.stopUFO()
         return
       }
+      if (s.paused) {
+        return
+      }
       if (s.phase === 'dead') {
         audioRef.current?.stopUFO()
         s.phaseTimer -= dt
@@ -464,6 +479,8 @@ export default function SpaceInvaders() {
           next.level = s.level + 1
           next.weapon = s.weapon
           next.weaponShots = s.weaponShots
+          next.combo = s.combo
+          next.comboTimer = s.comboTimer
           next.phase = 'playing'
           // speed up aliens
           next.marchInterval = Math.max(80, 600 - (s.level) * 60)
@@ -475,6 +492,12 @@ export default function SpaceInvaders() {
       s.flash = Math.max(0, s.flash - dt)
       s.playerInvincible = Math.max(0, s.playerInvincible - dt)
       s.shieldHit = Math.max(0, s.shieldHit - dt)
+
+      // Combo decay
+      s.comboTimer -= dt
+      if (s.comboTimer <= 0) {
+        s.combo = 0
+      }
 
       // Shield energy drain / recharge
       const shieldOn = !!s.keys['KeyS'] && s.shieldEnergy > 0
@@ -500,6 +523,35 @@ export default function SpaceInvaders() {
 
       // Move player bullets
       s.playerBullets = s.playerBullets.filter(b => {
+        // Heat-seeking for missiles
+        if (b.type === 'missile') {
+          const alive = s.aliens.filter(a => a.alive)
+          if (alive.length > 0) {
+            // Find closest alien
+            let closest = alive[0]
+            let minDist = Infinity
+            for (const a of alive) {
+              const dx = (a.x + ALIEN_W / 2) - (b.x + 5)
+              const dy = (a.y + ALIEN_H / 2) - (b.y + 11)
+              const dist = dx * dx + dy * dy
+              if (dist < minDist) {
+                minDist = dist
+                closest = a
+              }
+            }
+            // Move towards target
+            const tx = closest.x + ALIEN_W / 2
+            const ty = closest.y + ALIEN_H / 2
+            const dx = tx - (b.x + 5)
+            const dy = ty - (b.y + 11)
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist > 0) {
+              const speed = 5.5
+              b.vx = (dx / dist) * speed
+              b.vy = (dy / dist) * speed
+            }
+          }
+        }
         b.x += b.vx || 0
         b.y += b.vy !== undefined ? b.vy : -PLAYER_BULLET_SPEED
         return b.y + (b.h || BULLET_H) > 0 && b.x > -20 && b.x < W + 20
@@ -507,8 +559,9 @@ export default function SpaceInvaders() {
 
       // Move alien bullets
       s.alienBullets = s.alienBullets.filter(b => {
-        b.y += ALIEN_BULLET_SPEED
-        return b.y < H
+        b.x += b.vx || 0
+        b.y += b.vy !== undefined ? b.vy : ALIEN_BULLET_SPEED
+        return b.y < H + 10 && b.x > -10 && b.x < W + 10
       })
 
       // UFO
@@ -575,7 +628,10 @@ export default function SpaceInvaders() {
           if (!a.alive) continue
           if (b.x < a.x + ALIEN_W && b.x + bw > a.x && b.y < a.y + ALIEN_H && b.y + bh > a.y) {
             a.alive = false
-            s.score += a.points
+            const comboMultiplier = 1 + Math.floor(s.combo / 5) * 0.1
+            s.score += Math.floor(a.points * comboMultiplier)
+            s.combo++
+            s.comboTimer = 2500  // reset timer on kill
             if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
             s.flash = 80
             audioRef.current?.explosion()
@@ -912,6 +968,16 @@ export default function SpaceInvaders() {
         ctx.font = 'bold 12px "Courier New"'
         ctx.fillText(`${s.weapon.toUpperCase()} x${s.weaponShots}`, 158, H - 19)
       }
+      // combo display
+      if (s.combo > 0) {
+        const comboMult = 1 + Math.floor(s.combo / 5) * 0.1
+        const comboColor = s.combo >= 20 ? '#ff00ff' : s.combo >= 10 ? '#ffff00' : '#ff6600'
+        ctx.fillStyle = comboColor
+        ctx.font = 'bold 16px "Courier New"'
+        ctx.textAlign = 'center'
+        ctx.fillText(`COMBO x${s.combo} (${comboMult.toFixed(1)}x)`, W / 2, H - 52)
+        ctx.textAlign = 'left'
+      }
       // ground line
       ctx.fillStyle = '#00ff88'
       ctx.fillRect(0, H - 36, W, 2)
@@ -938,11 +1004,11 @@ export default function SpaceInvaders() {
         ctx.fillStyle = '#00ff88'
         ctx.font = '18px "Courier New"'
         ctx.fillText('← → or A D  to move', W / 2, H / 2 - 20)
-        ctx.fillText('SPACE to shoot', W / 2, H / 2 + 10)
+        ctx.fillText('SPACE to shoot  |  P to pause', W / 2, H / 2 + 10)
         ctx.fillStyle = '#00ccff'
         ctx.fillText('S to activate shield', W / 2, H / 2 + 36)
         ctx.fillStyle = '#ffdd00'
-        ctx.fillText('Shoot the UFO to drop a weapon!', W / 2, H / 2 + 62)
+        ctx.fillText('Build combos for score multiplier!', W / 2, H / 2 + 62)
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#fff'
           ctx.font = 'bold 22px "Courier New"'
@@ -988,6 +1054,20 @@ export default function SpaceInvaders() {
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#00ff88'
           ctx.fillText('PRESS SPACE TO PLAY AGAIN', W / 2, H / 2 + 60)
+        }
+        ctx.textAlign = 'left'
+      }
+      if (s.paused) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'
+        ctx.fillRect(0, 0, W, H)
+        ctx.textAlign = 'center'
+        ctx.fillStyle = '#00ccff'
+        ctx.font = 'bold 48px "Courier New"'
+        ctx.fillText('PAUSED', W / 2, H / 2 - 20)
+        ctx.fillStyle = '#fff'
+        ctx.font = '18px "Courier New"'
+        if (Math.floor(time / 600) % 2 === 0) {
+          ctx.fillText('PRESS P TO RESUME', W / 2, H / 2 + 40)
         }
         ctx.textAlign = 'left'
       }
@@ -1064,6 +1144,13 @@ export default function SpaceInvaders() {
     if (s.phase === 'playing') fireWeaponRef.current?.(s)
   }, [initGame])
 
+  const touchPause = useCallback(() => {
+    const s = stateRef.current
+    if (s && s.phase === 'playing') {
+      s.paused = !s.paused
+    }
+  }, [])
+
   const btnBase = {
     background: 'rgba(0,255,136,0.1)',
     border: '2px solid #00ff8888',
@@ -1133,6 +1220,13 @@ export default function SpaceInvaders() {
           onMouseUp={() => touchShield(false)}
           onMouseLeave={() => touchShield(false)}
         >🛡️<br />SHIELD</button>
+
+        {/* Pause button */}
+        <button
+          style={{ ...btnBase, width: 72, height: 72, fontSize: 10, letterSpacing: 0.5, border: '2px solid #ffaa0088', color: '#ffaa00', background: 'rgba(255,170,0,0.1)' }}
+          onTouchStart={e => { e.preventDefault(); touchPause() }}
+          onMouseDown={touchPause}
+        >⏸<br />PAUSE</button>
 
         {/* Fire button */}
         <button
