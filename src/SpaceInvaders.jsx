@@ -1181,23 +1181,23 @@ export default function SpaceInvaders() {
           >▶</button>
         </div>
 
-        {/* Shield button */}
-        <button
-          style={{ ...btnBase, width: 72, height: 64, fontSize: 11, letterSpacing: 1, border: '2px solid #00ccff88', color: '#00ccff', background: 'rgba(0,180,255,0.1)' }}
-          onTouchStart={e => { e.preventDefault(); touchShield(true) }}
-          onTouchEnd={e => { e.preventDefault(); touchShield(false) }}
-          onTouchCancel={e => { e.preventDefault(); touchShield(false) }}
-          onMouseDown={() => touchShield(true)}
-          onMouseUp={() => touchShield(false)}
-          onMouseLeave={() => touchShield(false)}
-        >🛡️<br />SHIELD</button>
-
-        {/* Fire button */}
-        <button
-          style={{ ...btnBase, width: 80, height: 64, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
-          onTouchStart={e => { e.preventDefault(); touchFire() }}
-          onMouseDown={touchFire}
-        >FIRE</button>
+        {/* Shield + Fire group */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            style={{ ...btnBase, width: 72, height: 64, fontSize: 11, letterSpacing: 1, border: '2px solid #00ccff88', color: '#00ccff', background: 'rgba(0,180,255,0.1)' }}
+            onTouchStart={e => { e.preventDefault(); touchShield(true) }}
+            onTouchEnd={e => { e.preventDefault(); touchShield(false) }}
+            onTouchCancel={e => { e.preventDefault(); touchShield(false) }}
+            onMouseDown={() => touchShield(true)}
+            onMouseUp={() => touchShield(false)}
+            onMouseLeave={() => touchShield(false)}
+          >🛡️<br />SHIELD</button>
+          <button
+            style={{ ...btnBase, width: 80, height: 64, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
+            onTouchStart={e => { e.preventDefault(); touchFire() }}
+            onMouseDown={touchFire}
+          >FIRE</button>
+        </div>
       </div>
     </div>
   )
