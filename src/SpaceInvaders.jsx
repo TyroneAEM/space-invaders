@@ -14,6 +14,8 @@ const ALIEN_SHOOT_INTERVAL = 1200 // ms base interval
 const ALIEN_MOVE_INTERVAL = 600   // ms base
 const PICKUP_FALL_SPEED = 1.2
 const WEAPON_SHOTS = 16
+const SMART_BOMB_MAX = 1            // only ever hold one armed bomb at a time
+const SMART_BOMB_WAVE_SPEED = 0.9  // ms of detonation delay per pixel from the cannon
 
 // Alien shapes: rows 0-1 Darth Vader, 2-3 stormtroopers, 4-5 skulls
 const ALIEN_COLORS = ['#8899cc', '#8899cc', '#dde0ee', '#dde0ee', '#6eb5ff', '#6eb5ff']
@@ -262,6 +264,56 @@ function createAudio() {
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28)
       osc.start(); osc.stop(ctx.currentTime + 0.28)
     },
+    smartBomb: () => {
+      const now = ctx.currentTime
+      // rising charge-up screech
+      const sweep = ctx.createOscillator()
+      const sweepGain = ctx.createGain()
+      sweep.connect(sweepGain); sweepGain.connect(ctx.destination)
+      sweep.type = 'square'
+      sweep.frequency.setValueAtTime(180, now)
+      sweep.frequency.exponentialRampToValueAtTime(2200, now + 0.13)
+      sweepGain.gain.setValueAtTime(0.5, now)
+      sweepGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2)
+      sweep.start(now); sweep.stop(now + 0.2)
+      // deep, long shockwave boom
+      const boom = ctx.createOscillator()
+      const boomGain = ctx.createGain()
+      boom.connect(boomGain); boomGain.connect(ctx.destination)
+      boom.type = 'sawtooth'
+      boom.frequency.setValueAtTime(170, now + 0.08)
+      boom.frequency.exponentialRampToValueAtTime(24, now + 1.3)
+      boomGain.gain.setValueAtTime(0.95, now + 0.08)
+      boomGain.gain.exponentialRampToValueAtTime(0.001, now + 1.3)
+      boom.start(now + 0.08); boom.stop(now + 1.3)
+      // sub-bass thud for chest-punch
+      const sub = ctx.createOscillator()
+      const subGain = ctx.createGain()
+      sub.connect(subGain); subGain.connect(ctx.destination)
+      sub.type = 'sine'
+      sub.frequency.setValueAtTime(90, now + 0.08)
+      sub.frequency.exponentialRampToValueAtTime(30, now + 0.8)
+      subGain.gain.setValueAtTime(0.9, now + 0.08)
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8)
+      sub.start(now + 0.08); sub.stop(now + 0.8)
+      // filtered white-noise blast for the explosive texture
+      const noise = ctx.createBufferSource()
+      const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.6), ctx.sampleRate)
+      const data = buffer.getChannelData(0)
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2)
+      }
+      noise.buffer = buffer
+      const noiseFilter = ctx.createBiquadFilter()
+      noiseFilter.type = 'lowpass'
+      noiseFilter.frequency.setValueAtTime(1600, now)
+      noiseFilter.frequency.exponentialRampToValueAtTime(180, now + 0.6)
+      const noiseGain = ctx.createGain()
+      noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination)
+      noiseGain.gain.setValueAtTime(0.8, now)
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6)
+      noise.start(now); noise.stop(now + 0.6)
+    },
   }
 }
 
@@ -314,11 +366,16 @@ export default function SpaceInvaders() {
       // explosion particles
       playerParticles: [],
       ufoParticles: [],
+      bombParticles: [],
       // weapons
       weaponPickup: null,
       weapon: 'normal',
       weaponShots: 0,
       lasers: [],
+      // smart bomb
+      smartBombs: 0,
+      bomb: null,       // { elapsed, duration } while a detonation is playing out
+      bombFlash: 0,     // 0..1 white blast flash on detonation
       // combo
       combo: 0,
       comboTimer: 0,
@@ -353,16 +410,41 @@ export default function SpaceInvaders() {
         }
       })
       if (!s.weaponPickup) {
-        const type = Math.random() < 0.25
+        const roll = Math.random()
+        const type = roll < 0.2
           ? 'life'
-          : ['missile', 'fire', 'laser'][Math.floor(Math.random() * 3)]
+          : roll < 0.45
+            ? 'bomb'
+            : ['missile', 'fire', 'laser'][Math.floor(Math.random() * 3)]
         s.weaponPickup = { x: s.ufo.x + 6, y: uy, type }
       }
       s.ufo = null
     }
 
+    function doSmartBomb(s) {
+      s.smartBombs--
+      s.flash = 200
+      s.bombFlash = 1
+      s.playerInvincible = Math.max(s.playerInvincible, 1800) // ride out the blast safely
+      audioRef.current?.smartBomb()
+      // Shockwave radiates out from the cannon: nearest aliens detonate first.
+      const cx = s.playerX + PLAYER_W / 2
+      const cy = s.playerY
+      let maxDelay = 0
+      s.aliens.forEach(a => {
+        if (!a.alive) return
+        const dx = (a.x + ALIEN_W / 2) - cx
+        const dy = (a.y + ALIEN_H / 2) - cy
+        a.detonateAt = Math.sqrt(dx * dx + dy * dy) * SMART_BOMB_WAVE_SPEED
+        if (a.detonateAt > maxDelay) maxDelay = a.detonateAt
+      })
+      s.bomb = { elapsed: 0, duration: maxDelay + 350 }
+    }
+
     function doFire(s) {
       if (s.keys['KeyS'] && s.shieldEnergy > 0) return
+      // An armed smart bomb takes over the fire button — clears the screen.
+      if (s.smartBombs > 0 && !s.bomb) { doSmartBomb(s); return }
 
       if (s.weapon === 'laser') {
         const lx = s.playerX + PLAYER_W / 2
@@ -470,6 +552,7 @@ export default function SpaceInvaders() {
           next.level = s.level + 1
           next.weapon = s.weapon
           next.weaponShots = s.weaponShots
+          next.smartBombs = s.smartBombs
           next.combo = s.combo
           next.comboTimer = s.comboTimer
           next.phase = 'playing'
@@ -505,6 +588,59 @@ export default function SpaceInvaders() {
       s.ufoParticles = s.ufoParticles
         .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.05, life: p.life - dt / 900 }))
         .filter(p => p.life > 0)
+      s.bombParticles = s.bombParticles
+        .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.06, life: p.life - dt / 700 }))
+        .filter(p => p.life > 0)
+
+      // Smart bomb blast flash fade
+      s.bombFlash = Math.max(0, s.bombFlash - dt / 320)
+
+      // ── Smart bomb detonation: staggered chain of explosions ──
+      if (s.bomb) {
+        s.bomb.elapsed += dt
+        const colors = ['#ff00ff', '#ff66ff', '#ffffff', '#ffdd00', '#ff8800']
+        s.aliens.forEach(a => {
+          if (!a.alive || a.detonateAt > s.bomb.elapsed) return
+          a.alive = false
+          const comboMultiplier = 1 + Math.floor(s.combo / 5) * 0.1
+          s.score += Math.floor(a.points * comboMultiplier)
+          s.combo++
+          s.comboTimer = 2500
+          if (s.score > s.hiScore) { s.hiScore = s.score; saveHiScore(s.hiScore) }
+          audioRef.current?.explosion()
+          s.flash = Math.max(s.flash, 90) // keep the screen crackling through the wave
+          const ax = a.x + ALIEN_W / 2, ay = a.y + ALIEN_H / 2
+          // main debris burst
+          for (let i = 0; i < 28; i++) {
+            const angle = Math.random() * Math.PI * 2
+            const speed = 1.5 + Math.random() * 5
+            s.bombParticles.push({
+              x: ax, y: ay,
+              vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+              life: 1, size: 2 + Math.random() * 5,
+              color: colors[Math.floor(Math.random() * colors.length)],
+            })
+          }
+          // hot white core flash
+          for (let i = 0; i < 6; i++) {
+            const angle = Math.random() * Math.PI * 2
+            const speed = 0.4 + Math.random() * 1.6
+            s.bombParticles.push({
+              x: ax, y: ay,
+              vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+              life: 1, size: 5 + Math.random() * 5,
+              color: '#ffffff',
+            })
+          }
+        })
+        if (s.bomb.elapsed >= s.bomb.duration) {
+          s.bomb = null
+          if (s.aliens.every(a => !a.alive)) {
+            s.phase = 'levelup'
+            s.phaseTimer = 2000
+          }
+        }
+      }
 
       // Player movement
       const left = s.keys['ArrowLeft'] || s.keys['KeyA']
@@ -569,7 +705,7 @@ export default function SpaceInvaders() {
 
       // Alien marching
       marchTick += dt
-      if (marchTick >= s.marchInterval) {
+      if (marchTick >= s.marchInterval && !s.bomb) {
         marchTick = 0
         s.animFrame = (s.animFrame + 1) % 2
         audioRef.current?.march()
@@ -602,7 +738,7 @@ export default function SpaceInvaders() {
       // Alien shooting
       s.alienShootTimer += dt
       const shootDelay = Math.max(300, ALIEN_SHOOT_INTERVAL - s.score * 2)
-      if (s.alienShootTimer >= shootDelay) {
+      if (s.alienShootTimer >= shootDelay && !s.bomb) {
         s.alienShootTimer = 0
         const alive = s.aliens.filter(a => a.alive)
         if (alive.length > 0) {
@@ -721,6 +857,8 @@ export default function SpaceInvaders() {
             p.y + 28 > s.playerY && p.y < s.playerY + PLAYER_H) {
           if (p.type === 'life') {
             s.lives = Math.min(s.lives + 1, 5)
+          } else if (p.type === 'bomb') {
+            s.smartBombs = Math.min(s.smartBombs + 1, SMART_BOMB_MAX)
           } else {
             s.weapon = p.type
             s.weaponShots = WEAPON_SHOTS
@@ -880,8 +1018,8 @@ export default function SpaceInvaders() {
     function drawPickup(ctx, pickup, time) {
       if (!pickup) return
       const { x, y, type } = pickup
-      const COLORS = { missile: '#ffdd00', fire: '#ff6600', laser: '#00ffff', life: '#00ff88' }
-      const LABELS = { missile: 'MISSILE', fire: 'FIRE', laser: 'LASER', life: '1UP' }
+      const COLORS = { missile: '#ffdd00', fire: '#ff6600', laser: '#00ffff', life: '#00ff88', bomb: '#ff33ff' }
+      const LABELS = { missile: 'MISSILE', fire: 'FIRE', laser: 'LASER', life: '1UP', bomb: 'S-BOMB' }
       const color = COLORS[type]
       const pulse = 0.6 + 0.4 * Math.sin(time / 180)
       ctx.fillStyle = 'rgba(0,0,0,0.8)'
@@ -920,6 +1058,26 @@ export default function SpaceInvaders() {
         ctx.fillStyle = `rgba(255,255,255,${a})`
         ctx.fillRect(l.x, 0, 1, beamH)
       })
+    }
+
+    function drawBombWave(ctx, s) {
+      if (!s.bomb) return
+      const cx = s.playerX + PLAYER_W / 2
+      const cy = s.playerY
+      const radius = s.bomb.elapsed / SMART_BOMB_WAVE_SPEED
+      const fade = Math.max(0, 1 - s.bomb.elapsed / s.bomb.duration)
+      // trailing purple glow
+      ctx.strokeStyle = `rgba(150,0,255,${0.35 * fade})`
+      ctx.lineWidth = 22
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(0, radius - 18), 0, Math.PI * 2); ctx.stroke()
+      // main magenta ring
+      ctx.strokeStyle = `rgba(255,60,255,${0.85 * fade})`
+      ctx.lineWidth = 6
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke()
+      // hot white leading edge
+      ctx.strokeStyle = `rgba(255,255,255,${0.7 * fade})`
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2); ctx.stroke()
     }
 
     function drawHUD(ctx, s) {
@@ -969,6 +1127,25 @@ export default function SpaceInvaders() {
         ctx.fillText(`COMBO x${s.combo} (${comboMult.toFixed(1)}x)`, W / 2, H - 52)
         ctx.textAlign = 'left'
       }
+      // smart bomb — armed indicator (fire button detonates)
+      if (s.smartBombs > 0) {
+        const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 180)
+        const bx = 24, by = 52
+        // bomb body
+        ctx.fillStyle = `rgba(255,51,255,${pulse})`
+        ctx.beginPath()
+        ctx.arc(bx + 7, by + 4, 7, 0, Math.PI * 2)
+        ctx.fill()
+        // fuse spark
+        ctx.fillStyle = `rgba(255,220,0,${pulse})`
+        ctx.fillRect(bx + 6, by - 6, 2, 4)
+        ctx.beginPath()
+        ctx.arc(bx + 7, by - 7, 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#ff33ff'
+        ctx.font = 'bold 14px "Courier New"'
+        ctx.fillText('SMART BOMB ARMED — FIRE!', bx + 22, by + 9)
+      }
       // ground line
       ctx.fillStyle = '#00ff88'
       ctx.fillRect(0, H - 36, W, 2)
@@ -1000,6 +1177,8 @@ export default function SpaceInvaders() {
         ctx.fillText('S to activate shield', W / 2, H / 2 + 36)
         ctx.fillStyle = '#ffdd00'
         ctx.fillText('Build combos for score multiplier!', W / 2, H / 2 + 62)
+        ctx.fillStyle = '#ff33ff'
+        ctx.fillText('Shoot UFOs for a SMART BOMB — FIRE to nuke the screen', W / 2, H / 2 + 86)
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#fff'
           ctx.font = 'bold 22px "Courier New"'
@@ -1051,15 +1230,26 @@ export default function SpaceInvaders() {
     }
 
     function draw(ctx, s, time) {
-      // Background
+      // Screen shake while a smart bomb detonates
+      let sx = 0, sy = 0
+      if (s.bomb) {
+        const amp = 12 * Math.max(0, 1 - s.bomb.elapsed / s.bomb.duration)
+        sx = (Math.random() - 0.5) * amp * 2
+        sy = (Math.random() - 0.5) * amp * 2
+      }
+
+      ctx.save()
+      ctx.translate(sx, sy)
+
+      // Background (oversized so shake never exposes an edge)
       ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, W, H)
+      ctx.fillRect(-24, -24, W + 48, H + 48)
       drawStars(ctx, time)
 
       // Flash on hit
       if (s.flash > 0) {
         ctx.fillStyle = `rgba(255,100,0,${s.flash / 200})`
-        ctx.fillRect(0, 0, W, H)
+        ctx.fillRect(-24, -24, W + 48, H + 48)
       }
 
       // Game objects
@@ -1067,12 +1257,24 @@ export default function SpaceInvaders() {
       s.aliens.forEach(a => { if (a.alive) drawAlien(ctx, a, s.animFrame) })
       if (s.ufo) drawUFO(ctx, s.ufo)
       drawParticles(ctx, s.ufoParticles)
+      drawBombWave(ctx, s)
+      drawParticles(ctx, s.bombParticles)
       drawPickup(ctx, s.weaponPickup, time)
       drawLasers(ctx, s.lasers)
       drawBullets(ctx, s)
       drawPlayer(ctx, s)
       drawParticles(ctx, s.playerParticles)
       drawPlayerShield(ctx, s, time)
+
+      // Blinding white blast flash on detonation
+      if (s.bombFlash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${s.bombFlash * 0.85})`
+        ctx.fillRect(-24, -24, W + 48, H + 48)
+      }
+
+      ctx.restore()
+
+      // HUD + overlays stay rock-steady (no shake)
       drawHUD(ctx, s)
       drawOverlay(ctx, s, time)
     }
