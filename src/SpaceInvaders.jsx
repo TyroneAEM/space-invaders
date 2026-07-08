@@ -425,7 +425,7 @@ export default function SpaceInvaders() {
       s.smartBombs--
       s.flash = 200
       s.bombFlash = 1
-      s.playerInvincible = Math.max(s.playerInvincible, 1800) // ride out the blast safely
+      s.alienBullets = []  // the blast wipes any incoming fire too — panic button
       audioRef.current?.smartBomb()
       // Shockwave radiates out from the cannon: nearest aliens detonate first.
       const cx = s.playerX + PLAYER_W / 2
@@ -439,6 +439,8 @@ export default function SpaceInvaders() {
         if (a.detonateAt > maxDelay) maxDelay = a.detonateAt
       })
       s.bomb = { elapsed: 0, duration: maxDelay + 350 }
+      // Stay invincible for the whole blast plus a safety margin.
+      s.playerInvincible = Math.max(s.playerInvincible, s.bomb.duration + 600)
     }
 
     function doFire(s) {
