@@ -324,6 +324,7 @@ export default function SpaceInvaders() {
   const rafRef = useRef(null)
   const audioRef = useRef(null)
   const fireWeaponRef = useRef(null)
+  const detonateBombRef = useRef(null)
 
   const initGame = useCallback(() => {
     const aliens = buildAliens()
@@ -443,10 +444,14 @@ export default function SpaceInvaders() {
       s.playerInvincible = Math.max(s.playerInvincible, s.bomb.duration + 600)
     }
 
+    // Trigger an armed smart bomb (B key or mobile BOMB button).
+    function tryDetonateBomb(s) {
+      if (s.phase === 'playing' && s.smartBombs > 0 && !s.bomb) doSmartBomb(s)
+    }
+    detonateBombRef.current = tryDetonateBomb
+
     function doFire(s) {
       if (s.keys['KeyS'] && s.shieldEnergy > 0) return
-      // An armed smart bomb takes over the fire button — clears the screen.
-      if (s.smartBombs > 0 && !s.bomb) { doSmartBomb(s); return }
 
       if (s.weapon === 'laser') {
         const lx = s.playerX + PLAYER_W / 2
@@ -503,7 +508,7 @@ export default function SpaceInvaders() {
     // ── Input ──
     const onKey = (e, down) => {
       stateRef.current.keys[e.code] = down
-      if (down && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'KeyS')) {
+      if (down && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyA' || e.code === 'KeyD' || e.code === 'KeyS' || e.code === 'KeyB')) {
         e.preventDefault()
       }
       if (down && e.code === 'Space') {
@@ -514,6 +519,9 @@ export default function SpaceInvaders() {
           return
         }
         if (s.phase === 'playing') doFire(s)
+      }
+      if (down && e.code === 'KeyB') {
+        tryDetonateBomb(stateRef.current)
       }
     }
     const onKeyDown = e => onKey(e, true)
@@ -775,13 +783,15 @@ export default function SpaceInvaders() {
             return false
           }
         }
-        // vs shields
-        for (const shield of s.shields) {
-          for (const block of shield.blocks) {
-            const sx = shield.x + block.c * 8, sy = shield.y + block.r * 8
-            if (b.x < sx + 8 && b.x + bw > sx && b.y < sy + 8 && b.y + bh > sy && block.hp > 0) {
-              block.hp--
-              return false
+        // vs shields — guided missiles fly over/through your own bunkers
+        if (b.type !== 'missile') {
+          for (const shield of s.shields) {
+            for (const block of shield.blocks) {
+              const sx = shield.x + block.c * 8, sy = shield.y + block.r * 8
+              if (b.x < sx + 8 && b.x + bw > sx && b.y < sy + 8 && b.y + bh > sy && block.hp > 0) {
+                block.hp--
+                return false
+              }
             }
           }
         }
@@ -1146,7 +1156,7 @@ export default function SpaceInvaders() {
         ctx.fill()
         ctx.fillStyle = '#ff33ff'
         ctx.font = 'bold 14px "Courier New"'
-        ctx.fillText('SMART BOMB ARMED — FIRE!', bx + 22, by + 9)
+        ctx.fillText('SMART BOMB ARMED — PRESS B', bx + 22, by + 9)
       }
       // ground line
       ctx.fillStyle = '#00ff88'
@@ -1180,7 +1190,7 @@ export default function SpaceInvaders() {
         ctx.fillStyle = '#ffdd00'
         ctx.fillText('Build combos for score multiplier!', W / 2, H / 2 + 62)
         ctx.fillStyle = '#ff33ff'
-        ctx.fillText('Shoot UFOs for a SMART BOMB — FIRE to nuke the screen', W / 2, H / 2 + 86)
+        ctx.fillText('Shoot UFOs for a SMART BOMB — press B to nuke the screen', W / 2, H / 2 + 86)
         if (Math.floor(time / 600) % 2 === 0) {
           ctx.fillStyle = '#fff'
           ctx.font = 'bold 22px "Courier New"'
@@ -1325,6 +1335,10 @@ export default function SpaceInvaders() {
     if (s.phase === 'playing') fireWeaponRef.current?.(s)
   }, [initGame])
 
+  const touchBomb = useCallback(() => {
+    detonateBombRef.current?.(stateRef.current)
+  }, [])
+
 
   const btnBase = {
     background: 'rgba(0,255,136,0.1)',
@@ -1362,7 +1376,7 @@ export default function SpaceInvaders() {
       />
 
       {/* Mobile controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 8px', marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', padding: '12px 8px', marginTop: 4 }}>
         {/* Move buttons */}
         <div style={{ display: 'flex', gap: 12 }}>
           <button
@@ -1385,8 +1399,8 @@ export default function SpaceInvaders() {
           >▶</button>
         </div>
 
-        {/* Shield + Fire group */}
-        <div style={{ display: 'flex', gap: 12 }}>
+        {/* Shield + Fire/Bomb group */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <button
             style={{ ...btnBase, width: 72, height: 64, fontSize: 11, letterSpacing: 1, border: '2px solid #00ccff88', color: '#00ccff', background: 'rgba(0,180,255,0.1)' }}
             onTouchStart={e => { e.preventDefault(); touchShield(true) }}
@@ -1396,11 +1410,18 @@ export default function SpaceInvaders() {
             onMouseUp={() => touchShield(false)}
             onMouseLeave={() => touchShield(false)}
           >🛡️<br />SHIELD</button>
-          <button
-            style={{ ...btnBase, width: 80, height: 64, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
-            onTouchStart={e => { e.preventDefault(); touchFire() }}
-            onMouseDown={touchFire}
-          >FIRE</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              style={{ ...btnBase, width: 80, height: 64, fontSize: 14, letterSpacing: 1, background: 'rgba(0,255,136,0.15)' }}
+              onTouchStart={e => { e.preventDefault(); touchFire() }}
+              onMouseDown={touchFire}
+            >FIRE</button>
+            <button
+              style={{ ...btnBase, width: 80, height: 48, fontSize: 11, letterSpacing: 1, border: '2px solid #ff33ff88', color: '#ff33ff', background: 'rgba(255,51,255,0.12)' }}
+              onTouchStart={e => { e.preventDefault(); touchBomb() }}
+              onMouseDown={touchBomb}
+            >💣 BOMB</button>
+          </div>
         </div>
       </div>
     </div>
