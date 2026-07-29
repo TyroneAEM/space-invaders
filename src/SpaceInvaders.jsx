@@ -14,7 +14,6 @@ const ALIEN_SHOOT_INTERVAL = 1200 // ms base interval
 const ALIEN_MOVE_INTERVAL = 600   // ms base
 const PICKUP_FALL_SPEED = 1.2
 const WEAPON_SHOTS = 16
-const SMART_BOMB_MAX = 1            // only ever hold one armed bomb at a time
 const SMART_BOMB_WAVE_SPEED = 0.9  // ms of detonation delay per pixel from the cannon
 
 // Alien shapes: rows 0-1 Darth Vader, 2-3 stormtroopers, 4-5 skulls
@@ -870,7 +869,7 @@ export default function SpaceInvaders() {
           if (p.type === 'life') {
             s.lives = Math.min(s.lives + 1, 5)
           } else if (p.type === 'bomb') {
-            s.smartBombs = Math.min(s.smartBombs + 1, SMART_BOMB_MAX)
+            s.smartBombs++
           } else {
             s.weapon = p.type
             s.weaponShots = WEAPON_SHOTS
@@ -1156,7 +1155,10 @@ export default function SpaceInvaders() {
         ctx.fill()
         ctx.fillStyle = '#ff33ff'
         ctx.font = 'bold 14px "Courier New"'
-        ctx.fillText('SMART BOMB ARMED — PRESS B', bx + 22, by + 9)
+        const bombLabel = s.smartBombs > 1
+          ? `SMART BOMB x${s.smartBombs} ARMED — PRESS B`
+          : 'SMART BOMB ARMED — PRESS B'
+        ctx.fillText(bombLabel, bx + 22, by + 9)
       }
       // ground line
       ctx.fillStyle = '#00ff88'
