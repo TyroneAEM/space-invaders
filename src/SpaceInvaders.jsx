@@ -12,6 +12,8 @@ const SHIELD_COUNT = 4, SHIELD_W = 64, SHIELD_H = 40
 const SHIELD_Y = H - 110
 const ALIEN_SHOOT_INTERVAL = 1200 // ms base interval
 const ALIEN_MOVE_INTERVAL = 600   // ms base
+const ALIEN_MOVE_INTERVAL_MIN = 80  // fastest march speed, reached at higher levels
+const ALIEN_SPEED_RAMP_PER_LEVEL = 30  // ms shaved off march interval per level gained
 const PICKUP_FALL_SPEED = 1.2
 const WEAPON_SHOTS = 16
 const SMART_BOMB_WAVE_SPEED = 0.9  // ms of detonation delay per pixel from the cannon
@@ -566,7 +568,7 @@ export default function SpaceInvaders() {
           next.comboTimer = s.comboTimer
           next.phase = 'playing'
           // speed up aliens
-          next.marchInterval = Math.max(80, 600 - (s.level) * 60)
+          next.marchInterval = Math.max(ALIEN_MOVE_INTERVAL_MIN, ALIEN_MOVE_INTERVAL - s.level * ALIEN_SPEED_RAMP_PER_LEVEL)
           stateRef.current = next
         }
         return
